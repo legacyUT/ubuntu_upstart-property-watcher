@@ -112,14 +112,14 @@ notify_upstart (const prop_info *pi)
 			*x = '.';
 	}
 
-    assert (name);
+	assert (name);
 
 	bytes = sprintf (buffer, "%s=%s\n", name, value);
-    if (bytes <= 0) {
-        __android_log_write (ANDROID_LOG_ERROR, program_name,
-                "Failed to format buffer");
+	if (bytes <= 0) {
+		__android_log_write (ANDROID_LOG_ERROR, program_name,
+				"Failed to format buffer");
 		exit (1);
-    }
+	}
 
 	if (write (socket_fd, buffer, bytes) < 0) {
 		saved = errno;
@@ -203,10 +203,10 @@ main (int argc, char *argv[])
 
 	program_name = argv[0];
 
-    pa = __system_property_area__;
-    assert (pa);
-    serial = pa->serial;
-    count = pa->count;
+	pa = __system_property_area__;
+	assert (pa);
+	serial = pa->serial;
+	count = pa->count;
 
 	if (count >= MAX_WATCHES) exit (1);
 
