@@ -64,8 +64,6 @@
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
-#include <android/log.h>
-
 #define MAX_WATCHES 1024
 
 /* Use the "special" /dev/socket/ directory which is configured to
@@ -116,14 +114,13 @@ notify_upstart (const prop_info *pi)
 
 	bytes = sprintf (buffer, "%s=%s\n", name, value);
 	if (bytes <= 0) {
-		__android_log_write (ANDROID_LOG_ERROR, program_name,
-				"Failed to format buffer");
+		fprintf (stderr, "Failed to format buffer");
 		exit (1);
 	}
 
 	if (write (socket_fd, buffer, bytes) < 0) {
 		saved = errno;
-		__android_log_print (ANDROID_LOG_ERROR, program_name,
+		fprintf (stderr,
 				"Failed to write %lu bytes to socket '%s' on fd %d (%d [%s])",
                 (unsigned long int)bytes,
 				UPSTART_BRIDGE_SOCKET,
@@ -149,8 +146,7 @@ setup_upstart_socket (void)
 	len = strlen (path);
 
 	if (len > sizeof (sun_addr.sun_path)) {
-		__android_log_print (ANDROID_LOG_ERROR, program_name,
-				"Path too long '%s'", UPSTART_BRIDGE_SOCKET);
+		fprintf (stderr, "Path too long '%s'", UPSTART_BRIDGE_SOCKET);
 		exit (1);
 	}
 
@@ -166,7 +162,7 @@ setup_upstart_socket (void)
 
 	if (socket_fd < 0) {
 		saved = errno;
-		__android_log_print (ANDROID_LOG_ERROR, program_name,
+		fprintf (stderr,
 				"Failed to create socket for '%s' (%d [%s])",
 				UPSTART_BRIDGE_SOCKET,
 				saved, strerror (saved));
@@ -176,7 +172,7 @@ setup_upstart_socket (void)
 	ret = connect (socket_fd, (struct sockaddr *)&sun_addr, sizeof (struct sockaddr_un));
 	if (ret < 0) {
 		saved = errno;
-		__android_log_print (ANDROID_LOG_ERROR, program_name,
+		fprintf (stderr,
 				"Failed to connect socket for '%s' on fd %d (%d [%s])",
 				UPSTART_BRIDGE_SOCKET, socket_fd,
 				saved, strerror (saved));
