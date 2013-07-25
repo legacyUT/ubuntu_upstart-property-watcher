@@ -114,17 +114,18 @@ notify_upstart (const prop_info *pi)
 
 	bytes = sprintf (buffer, "%s=%s\n", name, value);
 	if (bytes <= 0) {
-		fprintf (stderr, "Failed to format buffer");
+		fprintf (stderr, "%s:Failed to format buffer", program_name);
 		exit (1);
 	}
 
 	if (write (socket_fd, buffer, bytes) < 0) {
 		saved = errno;
 		fprintf (stderr,
-				"Failed to write %lu bytes to socket '%s' on fd %d (%d [%s])",
-                (unsigned long int)bytes,
+				"%s:Failed to write %lu bytes to socket '%s' on fd %d (%d [%s])",
+				program_name,
+				(unsigned long int)bytes,
 				UPSTART_BRIDGE_SOCKET,
-                socket_fd,
+				socket_fd,
 				saved, strerror (saved));
 		exit (1);
 	}
@@ -146,7 +147,8 @@ setup_upstart_socket (void)
 	len = strlen (path);
 
 	if (len > sizeof (sun_addr.sun_path)) {
-		fprintf (stderr, "Path too long '%s'", UPSTART_BRIDGE_SOCKET);
+		fprintf (stderr, "%s:Path too long '%s'",
+				program_name, UPSTART_BRIDGE_SOCKET);
 		exit (1);
 	}
 
@@ -163,7 +165,8 @@ setup_upstart_socket (void)
 	if (socket_fd < 0) {
 		saved = errno;
 		fprintf (stderr,
-				"Failed to create socket for '%s' (%d [%s])",
+				"%s:Failed to create socket for '%s' (%d [%s])",
+				program_name,
 				UPSTART_BRIDGE_SOCKET,
 				saved, strerror (saved));
 		exit (1);
@@ -173,7 +176,8 @@ setup_upstart_socket (void)
 	if (ret < 0) {
 		saved = errno;
 		fprintf (stderr,
-				"Failed to connect socket for '%s' on fd %d (%d [%s])",
+				"%s:Failed to connect socket for '%s' on fd %d (%d [%s])",
+				program_name,
 				UPSTART_BRIDGE_SOCKET, socket_fd,
 				saved, strerror (saved));
 		exit (1);
