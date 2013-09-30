@@ -61,6 +61,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#undef LOG_TAG
+#define LOG_TAG "UpstartPropertyWatcher"
+#include <utils/Log.h>
+
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
@@ -72,8 +76,6 @@
 #define UPSTART_BRIDGE_SOCKET "/dev/socket/upstart-text-bridge"
 
 extern prop_area *__system_property_area__;
-
-static char *program_name;
 
 typedef struct pwatch pwatch;
 
@@ -113,16 +115,15 @@ notify_upstart (const prop_info *pi)
 	assert (name);
 
 	bytes = sprintf (buffer, "%s=%s\n", name, value);
+	ALOGI ("Property changed: %s", buffer);
 	if (bytes <= 0) {
-		fprintf (stderr, "%s:Failed to format buffer", program_name);
+		ALOGE ("Failed to format buffer");
 		exit (1);
 	}
 
 	if (write (socket_fd, buffer, bytes) < 0) {
 		saved = errno;
-		fprintf (stderr,
-				"%s:Failed to write %lu bytes to socket '%s' on fd %d (%d [%s])",
-				program_name,
+		ALOGE ("Failed to write %lu bytes to socket '%s' on fd %d (%d [%s])",
 				(unsigned long int)bytes,
 				UPSTART_BRIDGE_SOCKET,
 				socket_fd,
@@ -147,8 +148,7 @@ setup_upstart_socket (void)
 	len = strlen (path);
 
 	if (len > sizeof (sun_addr.sun_path)) {
-		fprintf (stderr, "%s:Path too long '%s'",
-				program_name, UPSTART_BRIDGE_SOCKET);
+		ALOGE ("Path too long '%s'", UPSTART_BRIDGE_SOCKET);
 		exit (1);
 	}
 
@@ -164,9 +164,7 @@ setup_upstart_socket (void)
 
 	if (socket_fd < 0) {
 		saved = errno;
-		fprintf (stderr,
-				"%s:Failed to create socket for '%s' (%d [%s])",
-				program_name,
+		ALOGE ("Failed to create socket for '%s' (%d [%s])",
 				UPSTART_BRIDGE_SOCKET,
 				saved, strerror (saved));
 		exit (1);
@@ -175,13 +173,14 @@ setup_upstart_socket (void)
 	ret = connect (socket_fd, (struct sockaddr *)&sun_addr, sizeof (struct sockaddr_un));
 	if (ret < 0) {
 		saved = errno;
-		fprintf (stderr,
-				"%s:Failed to connect socket for '%s' on fd %d (%d [%s])",
-				program_name,
+		ALOGE ("Failed to connect socket for '%s' on fd %d (%d [%s])",
 				UPSTART_BRIDGE_SOCKET, socket_fd,
 				saved, strerror (saved));
 		exit (1);
 	}
+
+	ALOGI ("Upstart property watcher connected to socket '%s'",
+			UPSTART_BRIDGE_SOCKET);
 }
 
 static void
@@ -201,12 +200,14 @@ main (int argc, char *argv[])
 	unsigned      count;
 	unsigned      n;
 
-	program_name = argv[0];
-
 	pa = __system_property_area__;
 	assert (pa);
 	serial = pa->serial;
 	count = pa->count;
+
+	ALOGI ("Starting upstart property watcher");
+
+	ALOGI ("Property count %d", count);
 
 	if (count >= MAX_WATCHES) exit (1);
 
