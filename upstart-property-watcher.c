@@ -202,7 +202,6 @@ main (int argc, char *argv[])
 
 	pa = __system_property_area__;
 	assert (pa);
-	serial = pa->serial;
 	count = pa->count;
 
 	ALOGI ("Starting upstart property watcher");
@@ -224,8 +223,12 @@ main (int argc, char *argv[])
 
 	for (;;) {
 
+		serial = pa->serial;
 		do {
-			__futex_wait (&pa->serial, serial, 0);
+			if (__futex_wait (&pa->serial, serial, 0) != 0) {
+				ALOGE ("Error waiting for futex: %s", strerror(errno));
+				exit (1);
+			}
 		} while (pa->serial == serial);
 
 		while (count < pa->count){
