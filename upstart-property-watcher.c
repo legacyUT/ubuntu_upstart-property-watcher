@@ -216,10 +216,15 @@ main (int argc, char *argv[])
 	signal (SIGTERM, signal_handler);
 	signal (SIGINT, signal_handler);
 
+	ALOGI ("Notifying the entire property list");
+
 	for (n = 0; n < count; n++) {
 		watchlist[n].pi = __system_property_find_nth (n);
 		watchlist[n].serial = watchlist[n].pi->serial;
+		notify_upstart (watchlist[n].pi);
 	}
+
+	ALOGI ("Notifying changes only");
 
 	for (;;) {
 
@@ -227,7 +232,7 @@ main (int argc, char *argv[])
 		do {
 			if (__futex_wait (&pa->serial, serial, 0) != 0) {
 				ALOGE ("Error waiting for futex: %s", strerror(errno));
-				exit (1);
+				break;
 			}
 		} while (pa->serial == serial);
 
