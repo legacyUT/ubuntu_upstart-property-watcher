@@ -239,7 +239,7 @@ main (int argc, char *argv[])
 		while (count < pa->count){
 			watchlist[count].pi = __system_property_find_nth (count);
 			watchlist[count].serial = watchlist[n].pi->serial;
-			notify_upstart (watchlist[n].pi);
+			notify_upstart (watchlist[count].pi);
 			count++;
 
 			if (count == MAX_WATCHES) exit (1);
