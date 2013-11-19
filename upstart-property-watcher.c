@@ -38,7 +38,8 @@
  * This code is essentially a minor rework of the standard system
  * utility 'watchprops.c'.
  *
- * Author: James Hunt <james.hunt@ubuntu.com>
+ * Authors: James Hunt <james.hunt@ubuntu.com>
+ *          Jani Monoses <jani@ubuntu.com>
  *
  **/
 
@@ -74,8 +75,6 @@
  * "bleed through" from the host.
  */
 #define UPSTART_BRIDGE_SOCKET "/dev/socket/upstart-text-bridge"
-
-extern prop_area *__system_property_area__;
 
 typedef struct pwatch pwatch;
 
@@ -195,20 +194,11 @@ signal_handler (int signum)
 int
 main (int argc, char *argv[])
 {
-	prop_area    *pa;
-	unsigned      serial;
+	unsigned      serial = 0;
 	unsigned      count;
 	unsigned      n;
 
-	pa = __system_property_area__;
-	assert (pa);
-	count = pa->count;
-
 	ALOGI ("Starting upstart property watcher");
-
-	ALOGI ("Property count %d", count);
-
-	if (count >= MAX_WATCHES) exit (1);
 
 	/* Connect to Upstart bridge running on host */
 	setup_upstart_socket ();
@@ -218,27 +208,28 @@ main (int argc, char *argv[])
 
 	ALOGI ("Notifying the entire property list");
 
-	for (n = 0; n < count; n++) {
+       for (n = 0; n < MAX_WATCHES; n++) {
 		watchlist[n].pi = __system_property_find_nth (n);
-		watchlist[n].serial = watchlist[n].pi->serial;
+               if (watchlist[n].pi == 0)
+                       break;
+               watchlist[n].serial = __system_property_serial(watchlist[n].pi);
 		notify_upstart (watchlist[n].pi);
 	}
+
+       count = n;
+       if (count == MAX_WATCHES)
+               exit(1);
 
 	ALOGI ("Notifying changes only");
 
 	for (;;) {
 
-		serial = pa->serial;
-		do {
-			if (__futex_wait (&pa->serial, serial, 0) != 0) {
-				ALOGE ("Error waiting for futex: %s", strerror(errno));
-				break;
-			}
-		} while (pa->serial == serial);
-
-		while (count < pa->count){
+               serial = __system_property_wait_any(serial);
+               while (count < MAX_WATCHES){
 			watchlist[count].pi = __system_property_find_nth (count);
-			watchlist[count].serial = watchlist[n].pi->serial;
+                       if (watchlist[count].pi == 0)
+                               break;
+                       watchlist[count].serial = __system_property_serial(watchlist[n].pi);
 			notify_upstart (watchlist[count].pi);
 			count++;
 
@@ -246,7 +237,7 @@ main (int argc, char *argv[])
 		}
 
 		for (n = 0; n < count; n++) {
-			unsigned tmp = watchlist[n].pi->serial;
+                       unsigned tmp = __system_property_serial(watchlist[n].pi);
 			if (watchlist[n].serial != tmp) {
 				notify_upstart (watchlist[n].pi);
 				watchlist[n].serial = tmp;
