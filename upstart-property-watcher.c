@@ -54,6 +54,7 @@
 #include <signal.h>
 
 #include <cutils/properties.h>
+#include <cutils/hashmap.h>
 
 #include <sys/atomics.h>
 #include <sys/types.h>
@@ -76,46 +77,33 @@
  */
 #define UPSTART_BRIDGE_SOCKET "/dev/socket/upstart-text-bridge"
 
-#if ANDROID_VERSION_MAJOR==4 && ANDROID_VERSION_MINOR<=3
-extern prop_area *__system_property_area__;
-#endif
-
-typedef struct pwatch pwatch;
-
-struct pwatch
-{
-	const prop_info  *pi;
-	unsigned          serial;
-};
-
-static pwatch watchlist[MAX_WATCHES];
-
 static int socket_fd = -1;
 
-static void
-notify_upstart (const prop_info *pi)
+static int str_hash(void *key)
 {
-	char     name[PROP_NAME_MAX];
-	char     value[PROP_VALUE_MAX];
+	return hashmapHash(key, strlen(key));
+}
+
+static bool str_equals(void *keyA, void *keyB)
+{
+	return strcmp(keyA, keyB) == 0;
+}
+
+static void
+notify_upstart (const char *name, const char *value)
+{
 	char    *x;
 	int      bytes;
-	ssize_t  ret;
 	int      saved;
 
 	/* '<name>=<value>\n\0' */
 	char buffer[PROP_NAME_MAX + 1 + PROP_VALUE_MAX + 1 + 1];
-
-	assert (pi);
-
-	__system_property_read (pi, name, value);
 
 	for (x = value; *x; x++) {
 		/* Make all values printable */
 		if (! isprint (*x))
 			*x = '.';
 	}
-
-	assert (name);
 
 	bytes = sprintf (buffer, "%s=%s\n", name, value);
 	ALOGI ("Property changed: %s", buffer);
@@ -133,6 +121,58 @@ notify_upstart (const prop_info *pi)
 				saved, strerror (saved));
 		exit (1);
 	}
+}
+
+static void add_to_watchlist(Hashmap *watchlist, const char *name,
+		const char *value, const prop_info *pi)
+{
+	char *key = strdup(name);
+	unsigned *serial = malloc(sizeof(unsigned));
+	if (!key || !serial)
+		exit(1);
+
+	*serial = __system_property_serial(pi);
+	hashmapPut(watchlist, key, serial);
+	notify_upstart(name, value);
+}
+
+static void populate_watchlist(const prop_info *pi, void *cookie)
+{
+	Hashmap *watchlist = cookie;
+	char name[PROP_NAME_MAX];
+	char value[PROP_VALUE_MAX];
+
+	__system_property_read(pi, name, value);
+	add_to_watchlist(watchlist, name, value, pi);
+}
+
+static void update_watchlist(const prop_info *pi, void *cookie)
+{
+	Hashmap *watchlist = cookie;
+	char name[PROP_NAME_MAX];
+	char value[PROP_VALUE_MAX];
+	unsigned *serial;
+
+	__system_property_read(pi, name, value);
+	serial = hashmapGet(watchlist, name);
+	if (!serial) {
+		add_to_watchlist(watchlist, name, value, pi);
+	} else {
+		unsigned tmp = __system_property_serial(pi);
+		if (*serial != tmp) {
+			*serial = tmp;
+			notify_upstart(name, value);
+		}
+	}
+}
+
+static void
+signal_handler (int signum)
+{
+	assert (socket_fd);
+
+	if (signum == SIGTERM || signum == SIGINT)
+		close (socket_fd);
 }
 
 static void
@@ -186,15 +226,6 @@ setup_upstart_socket (void)
 			UPSTART_BRIDGE_SOCKET);
 }
 
-static void
-signal_handler (int signum)
-{
-	assert (socket_fd);
-
-	if (signum == SIGTERM || signum == SIGINT)
-		close (socket_fd);
-}
-
 int
 main (int argc, char *argv[])
 {
@@ -202,15 +233,11 @@ main (int argc, char *argv[])
 	unsigned      count;
 	unsigned      n;
 
+	Hashmap *watchlist = hashmapCreate(MAX_WATCHES, str_hash, str_equals);
+	if (!watchlist)
+		exit(1);
+
 	ALOGI ("Starting upstart property watcher");
-
-#if ANDROID_VERSION_MAJOR==4 && ANDROID_VERSION_MINOR<=3
-	prop_area    *pa;
-
-	pa = __system_property_area__;
-	assert (pa);
-	count = pa->count;
-#endif
 
 	/* Connect to Upstart bridge running on host */
 	setup_upstart_socket ();
@@ -220,66 +247,13 @@ main (int argc, char *argv[])
 
 	ALOGI ("Notifying the entire property list");
 
-	for (n = 0; n < MAX_WATCHES; n++) {
-		watchlist[n].pi = __system_property_find_nth (n);
-		if (watchlist[n].pi == 0)
-			break;
-#if ANDROID_VERSION_MAJOR==4 && ANDROID_VERSION_MINOR<=3
-		watchlist[n].serial = watchlist[n].pi->serial;
-#else
-		watchlist[n].serial = __system_property_serial(watchlist[n].pi);
-#endif
-		notify_upstart (watchlist[n].pi);
-	}
-
-	count = n;
-	if (count == MAX_WATCHES)
-		exit(1);
+	__system_property_foreach(populate_watchlist, watchlist);
 
 	ALOGI ("Notifying changes only");
 
 	for (;;) {
-
-#if ANDROID_VERSION_MAJOR==4 && ANDROID_VERSION_MINOR<=3
-		serial = pa->serial;
-		do {
-			if (__futex_wait (&pa->serial, serial, 0) != 0) {
-				ALOGE ("Error waiting for futex: %s", strerror(errno));
-				break;
-			}
-		} while (pa->serial == serial);
-
-		while (count < pa->count) {
-#else
 		serial = __system_property_wait_any(serial);
-
-		while (count < MAX_WATCHES) {
-#endif
-			watchlist[count].pi = __system_property_find_nth (count);
-			if (watchlist[count].pi == 0)
-				break;
-#if ANDROID_VERSION_MAJOR==4 && ANDROID_VERSION_MINOR<=3
-			watchlist[count].serial = watchlist[n].pi->serial;
-#else
-			watchlist[count].serial = __system_property_serial(watchlist[n].pi);
-#endif
-			notify_upstart (watchlist[count].pi);
-			count++;
-
-			if (count == MAX_WATCHES) exit (1);
-		}
-
-		for (n = 0; n < count; n++) {
-#if ANDROID_VERSION_MAJOR==4 && ANDROID_VERSION_MINOR<=3
-			unsigned tmp = watchlist[n].pi->serial;
-#else
-			unsigned tmp = __system_property_serial(watchlist[n].pi);
-#endif
-			if (watchlist[n].serial != tmp) {
-				notify_upstart (watchlist[n].pi);
-				watchlist[n].serial = tmp;
-			}
-		}
+		__system_property_foreach(update_watchlist, watchlist);
 	}
 
 	return 0;
