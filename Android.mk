@@ -4,6 +4,7 @@ include $(CLEAR_VARS)
 ANDROID_VERSION_MAJOR := $(word 1, $(subst ., , $(PLATFORM_VERSION)))
 ANDROID_VERSION_MINOR := $(word 2, $(subst ., , $(PLATFORM_VERSION)))
 ANDROID_VERSION_PATCH := $(word 3, $(subst ., , $(PLATFORM_VERSION)))
+IS_ANDROID_5 := $(shell test $(ANDROID_VERSION_MAJOR) -eq 5 && echo true)
 
 LOCAL_CFLAGS += \
 	-DANDROID_VERSION_MAJOR=$(ANDROID_VERSION_MAJOR) \
@@ -12,8 +13,13 @@ LOCAL_CFLAGS += \
 
 LOCAL_SRC_FILES := upstart-property-watcher.c
 
+ifeq ($(IS_ANDROID_5),true)
+LOCAL_C_INCLUDES := \
+	prebuilts/ndk/current/platforms/android-19/arch-arm/usr/include
+else
 LOCAL_C_INCLUDES := \
 	bionic/libc/bionic
+endif
 
 LOCAL_MODULE := upstart-property-watcher
 
