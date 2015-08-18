@@ -56,7 +56,6 @@
 #include <cutils/properties.h>
 #include <cutils/hashmap.h>
 
-#include <sys/atomics.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
